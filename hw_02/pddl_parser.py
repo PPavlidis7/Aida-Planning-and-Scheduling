@@ -3,51 +3,51 @@ import re
 from action import Action
 
 
-class PDDL_Parser:
-    SUPPORTED_REQUIREMENTS = [':strips', ':negative-preconditions', ':typing']
+class PddlParser:
+    SUPPORTED_REQUIREMENTS = [':strips', ':typing']
 
-    # ------------------------------------------
-    # Tokens
-    # ------------------------------------------
+    def __init__(self):
+        self.predicates = {}
+        self.actions = []
+        self.negative_goals = []
+        self.positive_goals = []
+        self.objects = {}
+        self.state = []
+        self.domain_name = 'unknown'
+        self.problem_name = 'unknown'
+        self.requirements = []
+        self.types = {}
 
-    def scan_tokens(self, filename):
+    @staticmethod
+    def __scan_tokens(filename):
         with open(filename, 'r') as f:
             # Remove single line comments
-            str = re.sub(r';.*$', '', f.read(), flags=re.MULTILINE).lower()
+            __data = re.sub(r';.*$', '', f.read(), flags=re.MULTILINE).lower()
         # Tokenize
         stack = []
-        list = []
-        for t in re.findall(r'[()]|[^\s()]+', str):
-            if t == '(':
-                stack.append(list)
-                list = []
-            elif t == ')':
+        __temp_list = []
+        for __character in re.findall(r'[()]|[^\s()]+', __data):
+            if __character == '(':
+                stack.append(__temp_list)
+                __temp_list = []
+            elif __character == ')':
                 if stack:
-                    l = list
-                    list = stack.pop()
-                    list.append(l)
+                    __temp_list_2 = __temp_list
+                    __temp_list = stack.pop()
+                    __temp_list.append(__temp_list_2)
                 else:
                     raise Exception('Missing open parentheses')
             else:
-                list.append(t)
+                __temp_list.append(__character)
         if stack:
             raise Exception('Missing close parentheses')
-        if len(list) != 1:
+        if len(__temp_list) != 1:
             raise Exception('Malformed expression')
-        return list[0]
-
-    # -----------------------------------------------
-    # Parse domain
-    # -----------------------------------------------
+        return __temp_list[0]
 
     def parse_domain(self, domain_filename):
-        tokens = self.scan_tokens(domain_filename)
+        tokens = self.__scan_tokens(domain_filename)
         if type(tokens) is list and tokens.pop(0) == 'define':
-            self.domain_name = 'unknown'
-            self.requirements = []
-            self.types = []
-            self.actions = []
-            self.predicates = {}
             while tokens:
                 group = tokens.pop(0)
                 t = group.pop(0)
@@ -55,11 +55,11 @@ class PDDL_Parser:
                     self.domain_name = group[0]
                 elif t == ':requirements':
                     for req in group:
-                        if not req in self.SUPPORTED_REQUIREMENTS:
+                        if req not in self.SUPPORTED_REQUIREMENTS:
                             raise Exception('Requirement ' + req + ' not supported')
                     self.requirements = group
                 elif t == ':predicates':
-                    self.parse_predicates(group)
+                    self.__parse_predicates(group)
                 elif t == ':types':
                     __tmp_list = []
                     __tmp_dict = {}
@@ -78,17 +78,13 @@ class PDDL_Parser:
                     # __tmp_dict['locatable'] += __tmp_dict['surface']
                     self.types = __tmp_dict
                 elif t == ':action':
-                    self.parse_action(group)
+                    self.__parse_action(group)
                 else:
                     print(str(t) + ' is not recognized in domain')
         else:
             raise Exception('File ' + domain_filename + ' does not match domain pattern')
 
-    # -----------------------------------------------
-    # Parse predicates
-    # -----------------------------------------------
-
-    def parse_predicates(self, group):
+    def __parse_predicates(self, group):
         for pred in group:
             predicate_name = pred.pop(0)
             if predicate_name in self.predicates:
@@ -100,20 +96,16 @@ class PDDL_Parser:
                 if t == '-':
                     if not untyped_variables:
                         raise Exception('Unexpected hyphen in predicates')
-                    type = pred.pop(0)
+                    item_type = pred.pop(0)
                     while untyped_variables:
-                        arguments[untyped_variables.pop(0)] = type
+                        arguments[untyped_variables.pop(0)] = item_type
                 else:
                     untyped_variables.append(t)
             while untyped_variables:
                 arguments[untyped_variables.pop(0)] = 'object'
             self.predicates[predicate_name] = arguments
 
-    # -----------------------------------------------
-    # Parse action
-    # -----------------------------------------------
-
-    def parse_action(self, group):
+    def __parse_action(self, group):
         name = group.pop(0)
         if not type(name) is str:
             raise Exception('Action without name definition')
@@ -146,27 +138,18 @@ class PDDL_Parser:
                 while untyped_parameters:
                     parameters.append([untyped_parameters.pop(0), 'object'])
             elif t == ':precondition':
-                self.split_predicates(group.pop(0), positive_preconditions, negative_preconditions, name,
+                self.__split_predicates(group.pop(0), positive_preconditions, negative_preconditions, name,
                                       ' preconditions')
             elif t == ':effect':
-                self.split_predicates(group.pop(0), add_effects, del_effects, name, ' effects')
+                self.__split_predicates(group.pop(0), add_effects, del_effects, name, ' effects')
             else:
                 print(str(t) + ' is not recognized in action')
         self.actions.append(
             Action(name, parameters, positive_preconditions, negative_preconditions, add_effects, del_effects))
 
-    # -----------------------------------------------
-    # Parse problem
-    # -----------------------------------------------
-
     def parse_problem(self, problem_filename):
-        tokens = self.scan_tokens(problem_filename)
+        tokens = self.__scan_tokens(problem_filename)
         if type(tokens) is list and tokens.pop(0) == 'define':
-            self.problem_name = 'unknown'
-            self.objects = dict()
-            self.state = []
-            self.positive_goals = []
-            self.negative_goals = []
             while tokens:
                 group = tokens.pop(0)
                 t = group[0]
@@ -188,31 +171,32 @@ class PDDL_Parser:
                         else:
                             object_list.append(group.pop(0))
                     if object_list:
-                        if not 'object' in self.objects:
+                        if 'object' not in self.objects:
                             self.objects['object'] = []
                         self.objects['object'] += object_list
-                    for object, object_subtypes in self.types.items():
-                        if object == 'locatable' or object == 'object':
+                    for type_name, type_subtypes in self.types.items():
+                        if type_name == 'object':
                             continue
-                        if not object in self.objects and object_subtypes != []:
-                            self.objects[object] = []
-                            for subtype in object_subtypes:
-                                self.objects[object] += self.objects[subtype]
+                        if type_name not in self.objects and type_subtypes != []:
+                            self.objects[type_name] = []
+                            for subtype in type_subtypes:
+                                if type_name == 'locatable' and subtype == 'surface':
+                                    for tmp_subtype in self.types[subtype]:
+                                        self.objects[type_name] += self.objects[tmp_subtype]
+                                else:
+                                    self.objects[type_name] += self.objects[subtype]
                 elif t == ':init':
                     group.pop(0)
                     self.state = group
                 elif t == ':goal':
-                    self.split_predicates(group[1], self.positive_goals, self.negative_goals, '', 'goals')
+                    self.__split_predicates(group[1], self.positive_goals, self.negative_goals, '', 'goals')
                 else:
                     print(str(t) + ' is not recognized in problem')
         else:
             raise Exception('File ' + problem_filename + ' does not match problem pattern')
 
-    # -----------------------------------------------
-    # Split predicates
-    # -----------------------------------------------
-
-    def split_predicates(self, group, pos, neg, name, part):
+    @staticmethod
+    def __split_predicates(group, pos, neg, name, part):
         if not type(group) is list:
             raise Exception('Error with ' + name + part)
         if group[0] == 'and':
@@ -226,30 +210,3 @@ class PDDL_Parser:
                 neg.append(predicate[-1])
             else:
                 pos.append(predicate)
-
-
-# ==========================================
-# Main
-# ==========================================
-if __name__ == '__main__':
-    import sys, pprint
-
-    domain = sys.argv[1]
-    problem = sys.argv[2]
-    parser = PDDL_Parser()
-    print('----------------------------')
-    pprint.pprint(parser.scan_tokens(domain))
-    print('----------------------------')
-    pprint.pprint(parser.scan_tokens(problem))
-    print('----------------------------')
-    parser.parse_domain(domain)
-    parser.parse_problem(problem)
-    print('Domain name: ' + parser.domain_name)
-    for act in parser.actions:
-        print(act)
-    print('----------------------------')
-    print('Problem name: ' + parser.problem_name)
-    print('Objects: ' + str(parser.objects))
-    print('State: ' + str(parser.state))
-    print('Positive goals: ' + str(parser.positive_goals))
-    print('Negative goals: ' + str(parser.negative_goals))
