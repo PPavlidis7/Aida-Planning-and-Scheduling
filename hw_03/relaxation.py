@@ -10,7 +10,8 @@ class Planner:
         self.action_state = {}  # An
         self.all_possible_actions = []
         self.generate_all_available_actions()
-        self.states = {0: set(tuple(state) for state in self.parser.state)}
+        self.states = {0: set(tuple(state + [0]) for state in self.parser.state)}
+        self.g_node = 0
 
     def generate_all_available_actions(self):
         for action in self.parser.actions:
@@ -19,9 +20,9 @@ class Planner:
 
     @staticmethod
     def applicable(state, precondition):
-        return tuple(precondition) in state
+        return any([set(precondition).issubset(set(item)) for item in state])
 
-    def graph_plan(self):
+    def relaxation_plan(self):
         current_state = 0  # S0
         while True:
             temp_state = self.states[current_state].copy()
@@ -34,8 +35,30 @@ class Planner:
                         action_flag = False
                         break
                 if action_flag:
+                    for precondition in pre_cond:
+                        # find the precondition in temp_state
+                        state_from_temp_state = [item for item in temp_state if set(precondition).issubset(set(item))]
+                        if len(state_from_temp_state) > 1:
+                            print("error 1")
+                        for state_value in state_from_temp_state:
+                            action.weight += state_value[len(state_value) - 1] + 1
+
                     for effect in action.add_effects:
-                        temp_state.add(effect)
+                        # check effect exists already in state
+                        if any([set(effect).issubset(set(item)) for item in temp_state]):
+                            # for __state in temp_state:
+                            #     if set(effect).issubset(set(__state)):
+                            #         break
+                            state_from_temp_state = [item for item in temp_state if set(effect).issubset(set(item))]
+                            if len(state_from_temp_state) > 1:
+                                print("error 2")
+                            for state_value in state_from_temp_state:
+                                if state_value[len(state_value) - 1] > action.weight:
+                                    temp_state.remove(state_value)
+                                    temp_state.add(state_value[:len(state_value) - 1] + (action.weight,))
+                            x = 1
+                        else:
+                            temp_state.add(effect + (action.weight,))
                     possible_actions.add(action)
 
             if temp_state == self.states[current_state] or len(possible_actions) == 0:
@@ -45,7 +68,17 @@ class Planner:
                 current_state += 1
                 self.states[current_state] = temp_state
 
+        self.calculate_g_node(current_state)
         self.write_actions_states_occurred(current_state)
+
+    def calculate_g_node(self, current_state):
+        succeeded_goals = ([item for goal in self.parser.positive_goals for item in self.states[current_state] if
+                            set(goal).issubset(set(item))])
+        if not len(self.parser.positive_goals) == len(succeeded_goals):
+            print("I could not succeed all goals")
+
+        for _succeeded_goal in succeeded_goals:
+            self.g_node += _succeeded_goal[len(_succeeded_goal) - 1]
 
     def write_actions_states_occurred(self, current_state):
         data = 'Actions and States occurred per level \n' + '-'*50 + '\n'
@@ -54,7 +87,7 @@ class Planner:
                 level, len(self.states[level]), len(self.action_state[level]))
             data += '\nStates: \n'
             for state in self.states[level]:
-                data += "%s \n" % ', '.join(state)
+                data += "%s - Hadd value: %d \n" % (', '.join(state[:len(state)-1]), state[len(state)-1])
             data += '\nActions: \n'
             for action in self.action_state[level]:
                 data += action.__str__()
@@ -64,9 +97,12 @@ class Planner:
         data += 'At level {} we had {} states\n'.format(current_state, len(self.states[current_state]))
         data += '\nStates: \n'
         for state in self.states[current_state]:
-            data += "%s \n" % ', '.join(state)
+            data += "%s - Hadd value: %d \n" % (', '.join(state[:len(state) - 1]), state[len(state) - 1])
 
-        with open('graphPlan_states_actions.txt', 'w') as f:
+        data += '\n' + '-'*100 + '\n'
+        data += "G node had Hadd value = {}".format(self.g_node)
+
+        with open('results.txt', 'w') as f:
             f.write(data)
 
 
@@ -74,4 +110,4 @@ if __name__ == '__main__':
     domain = "Depots.pddl"
     problem = "pfile1.pddl"
     planner = Planner(domain, problem)
-    planner.graph_plan()
+    planner.relaxation_plan()

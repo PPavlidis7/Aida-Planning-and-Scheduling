@@ -10,14 +10,14 @@ class Action:
         self.negative_preconditions = [tuple(precondition) for precondition in negative_preconditions]
         self.add_effects = [tuple(effect) for effect in add_effects]
         self.del_effects = [tuple(effect) for effect in del_effects]
-        self.weight = 1
+        self.weight = 0
 
     def __str__(self):
         return 'action: ' + self.name + \
                '\n  parameters: ' + str(self.parameters) + \
                '\n  positive_preconditions: ' + str(self.positive_preconditions) + \
                '\n  add_effects: ' + str(self.add_effects) + \
-               '\n  del_effects: ' + str(self.del_effects) + '\n'
+               '\n  Hadd value: ' + str(self.weight) + '\n'
 
     def __hash__(self):
         return hash((tuple(self.parameters), self.name))
