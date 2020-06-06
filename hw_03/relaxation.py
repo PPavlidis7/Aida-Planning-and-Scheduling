@@ -1,5 +1,5 @@
 from pddl_parser import PddlParser
-
+import copy
 
 class Planner:
     def __init__(self, domain_file_name, problem_file_name):
@@ -37,29 +37,22 @@ class Planner:
                 if action_flag:
                     for precondition in pre_cond:
                         # find the precondition in temp_state
-                        state_from_temp_state = [item for item in temp_state if set(precondition).issubset(set(item))]
-                        if len(state_from_temp_state) > 1:
-                            print("error 1")
-                        for state_value in state_from_temp_state:
-                            action.weight += state_value[len(state_value) - 1] + 1
+                        state_from_temp_state = \
+                            [item for item in temp_state if set(precondition).issubset(set(item))][0]
+                        action.weight += state_from_temp_state[len(state_from_temp_state) - 1]
+                    action.weight += 1
 
                     for effect in action.add_effects:
                         # check effect exists already in state
                         if any([set(effect).issubset(set(item)) for item in temp_state]):
-                            # for __state in temp_state:
-                            #     if set(effect).issubset(set(__state)):
-                            #         break
-                            state_from_temp_state = [item for item in temp_state if set(effect).issubset(set(item))]
-                            if len(state_from_temp_state) > 1:
-                                print("error 2")
-                            for state_value in state_from_temp_state:
-                                if state_value[len(state_value) - 1] > action.weight:
-                                    temp_state.remove(state_value)
-                                    temp_state.add(state_value[:len(state_value) - 1] + (action.weight,))
-                            x = 1
+                            state_from_temp_state = [item for item in temp_state if set(effect).issubset(set(item))][0]
+                            if state_from_temp_state[len(state_from_temp_state) - 1] > action.weight:
+                                temp_state.remove(state_from_temp_state)
+                                temp_state.add(state_from_temp_state[:len(state_from_temp_state) - 1] +
+                                               (action.weight,))
                         else:
                             temp_state.add(effect + (action.weight,))
-                    possible_actions.add(action)
+                    possible_actions.add(copy.deepcopy(action))
 
             if temp_state == self.states[current_state] or len(possible_actions) == 0:
                 break
@@ -67,31 +60,31 @@ class Planner:
                 self.action_state[current_state] = possible_actions
                 current_state += 1
                 self.states[current_state] = temp_state
+                self.calculate_g_node(current_state)
 
-        self.calculate_g_node(current_state)
+        if self.g_node == 0:
+            print("I could not succeed all goals")
         self.write_actions_states_occurred(current_state)
 
     def calculate_g_node(self, current_state):
         succeeded_goals = ([item for goal in self.parser.positive_goals for item in self.states[current_state] if
                             set(goal).issubset(set(item))])
-        if not len(self.parser.positive_goals) == len(succeeded_goals):
-            print("I could not succeed all goals")
-
-        for _succeeded_goal in succeeded_goals:
-            self.g_node += _succeeded_goal[len(_succeeded_goal) - 1]
+        if len(self.parser.positive_goals) == len(succeeded_goals) and self.g_node == 0:
+            for _succeeded_goal in succeeded_goals:
+                self.g_node += _succeeded_goal[len(_succeeded_goal) - 1]
 
     def write_actions_states_occurred(self, current_state):
-        data = 'Actions and States occurred per level \n' + '-'*50 + '\n'
+        data = 'Actions and States occurred per level \n' + '-' * 50 + '\n'
         for level in range(current_state):
             data += 'At level {} we had {} states and we found {} new actions\n'.format(
                 level, len(self.states[level]), len(self.action_state[level]))
             data += '\nStates: \n'
             for state in self.states[level]:
-                data += "%s - Hadd value: %d \n" % (', '.join(state[:len(state)-1]), state[len(state)-1])
+                data += "%s - Hadd value: %d \n" % (', '.join(state[:len(state) - 1]), state[len(state) - 1])
             data += '\nActions: \n'
             for action in self.action_state[level]:
                 data += action.__str__()
-            data += '-'*100 + '\n'
+            data += '-' * 100 + '\n'
 
         # write last level's states
         data += 'At level {} we had {} states\n'.format(current_state, len(self.states[current_state]))
@@ -99,8 +92,11 @@ class Planner:
         for state in self.states[current_state]:
             data += "%s - Hadd value: %d \n" % (', '.join(state[:len(state) - 1]), state[len(state) - 1])
 
-        data += '\n' + '-'*100 + '\n'
-        data += "G node had Hadd value = {}".format(self.g_node)
+        data += '\n' + '-' * 100 + '\n'
+        if self.g_node == 0:
+            data += "We did not find all goals so we did not calculate G node value"
+        else:
+            data += "G node had Hadd value = {}".format(self.g_node)
 
         with open('results.txt', 'w') as f:
             f.write(data)
