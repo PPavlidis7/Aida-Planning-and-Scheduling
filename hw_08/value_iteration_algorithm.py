@@ -15,7 +15,7 @@ import numpy as np
 
 # Constants
 ALGORITHM_NAME = "Value_Iteration"
-FILENAME = "RACE_1.txt"
+FILENAME = "race_env.txt"
 START = 'S'
 GOAL = 'F'
 WALL = '#'
